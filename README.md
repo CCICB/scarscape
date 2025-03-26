@@ -12,6 +12,12 @@ ScarScape extracts the landscape of tumorigenic scars from cancer omics data. Fo
 
 Refer to the latest release for installation instructions.
 
+The development version from github can be installed by running
+
+```
+cargo install --git https://github.com/CCICB/scarscape  
+```
+
 ---
 
 ## Quick Start
