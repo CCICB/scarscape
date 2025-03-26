@@ -1,6 +1,6 @@
 [package]
 name = "scarscape"
-version = "0.1.0"
+version = "0.0.1-beta.1"
 edition = "2021"
 description = "Extract tumorigenic scars from cancer omics data"
 homepage = "https://github.com/CCICB/scarscape"
