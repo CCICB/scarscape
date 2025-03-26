@@ -10,7 +10,7 @@ use clap::Parser;
 #[derive(Parser)]
 #[command(version, about, long_about = None)]
 struct Cli {
-    /// A TSV mapping samples to their corresponding mutation data files. Should contain 4 columns (with the following headers)
+    /// A CSV file mapping samples to their corresponding mutation data files. Should contain 4 columns (with the following headers)
     /// [sample]: sample identifier
     /// [snv]: path to VCF file describing SNVs and INDELs
     /// [sv]: path to VCF file describing structural variants (1 entry per breakend)

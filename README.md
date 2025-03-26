@@ -22,7 +22,7 @@ cargo install --git https://github.com/CCICB/scarscape
 
 ## Quick Start
 
-Prepare a [manifest](testfiles/manifest.tsv) TSV with the following columns:
+Prepare a [manifest](testfiles/manifest.csv) CSV with the following columns:
 
 - **sample:** Unique sample identifier (must match SNV VCF identifiers)
 - **snv:** Path to SNV/INDEL VCF (bgzipped and indexed via `tabix -p vcf path/to/vcf.gz`)
@@ -32,7 +32,7 @@ Prepare a [manifest](testfiles/manifest.tsv) TSV with the following columns:
 *Note:* Each sample must have at least one file type specified (snv, sv, or cnv).
 
 ```{bash}
-scarseek --manifest <path_to_manifest.tsv> --genome hg38
+scarseek --manifest <path_to_manifest.csv> --genome hg38
 ```
 
 
