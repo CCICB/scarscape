@@ -1,0 +1,2 @@
+sample,col1,sv,cnv
+tumour1,testfiles/tumor_sample.purple.somatic.bgzipped.vcf.gz,testfiles/tumor_sample.purple.sv.bgzipped.vcf.gz,
