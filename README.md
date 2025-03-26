@@ -3,34 +3,63 @@
 > \[!WARNING\]  
 > This package is in early development and not ready for use
 
-Extract the landscape of tumorigenic scars from cancer omics data.
+ScarScape extracts the landscape of tumorigenic scars from cancer omics data. For each tumour, it processes common biological data types, classifying each instance of omic damage by its affected loci, sequence context, clustering pattern, and other contextual features. It then reports the frequency of these distinct damage types. By carefully defining how mutations are classified and counted, ScarScape aims to clearly reveal the active mechanisms driving tumorigenesis.
+
+---
+
+
+## Installation
+
+Refer to the latest release for installation instructions.
+
+---
+
+## Quick Start
+
+Prepare a [manifest](testfiles/manifest.tsv) TSV with the following columns:
+
+- **sample:** Unique sample identifier (must match SNV VCF identifiers)
+- **snv:** Path to SNV/INDEL VCF (bgzipped and indexed via `tabix -p vcf path/to/vcf.gz`)
+- **sv:** Path to structural variant VCF (one entry per breakend)
+- **cnv:** Path to copy number TSV (must include: `chromosome`, `start` (1-based), `end` (inclusive), `copyNumber`, `minorAlleleCopyNumber`)
+
+*Note:* Each sample must have at least one file type specified (snv, sv, or cnv).
+
+```{bash}
+scarseek --manifest <path_to_manifest.tsv> --genome hg38
+```
+
+
+---
 
 ## Metrics
 
-The metrics we extract from mutation data are designed to reflect different tumorigenic mechanisms.
-
-### Hyperactivity of Endogenous rearrangements
-
-B & T cell derived tumours can be driven by hyperactive activity of endogenous mutagenic enzymes involved in generating receptor diversity (e.g. RAG recombinase for VDJ rearrangement and APOBEC for somatic hypermutation). The following metrics are designed to separate B and T-cell tumours from each other & solid tumours while allowing quantification of diversity-related endogenous mutagenic activity since we expect it to be higher in cancers driven by RAG / APOBEC activity 
-
-1) Counts SVs in VDJ regions of IG (B cell) and TCR (T cell) loci (regions from cider). 
-2) Quantify Somatic Hypermutation in IG and TCR loci (only occurs in B cells)
-3) SV mutation count
+The metrics captured by ScarScape are carefully chosen to reflect diverse tumorigenic mechanisms, so that downstream analyses stand the best chance of mapping these features back to their aetiological processes. 
 
 
-# Installation
+### Endogenous Rearrangement Hyperactivity
 
-See latest release for installation instructions.
+To characterise B & T cell-derived tumors, which may be driven by endogenous mutagenic enzymes (e.g., RAG for VDJ rearrangement, APOBEC for hypermutation), ScarScape quantifies:
 
-# Quick Start
+- **SV counts in VDJ regions** to (hopefully) reveal bias towards IG loci in B cell tumours and TCR loci in T cells)
+- **Somatic hypermutation** of IG/TCR loci (a B cells-specific process)
+- **Total SV mutation count** for normalisation and detection of SV hypermutated samples.
 
-ScarScape extracts features from common mutation file formats. We require a manifest csv with the following column:
+## Output
 
-1) **sample**: sample identifier. Must be the same identifier used in snv VCFs
-2) **snv**: path to a VCF file describing SNVs and INDELs
-3) **sv**: path to a VCF file describing structural variants (1 entry per breakend).
-4) **cnv**: path to a TSV describing segment copy number. Must contain the columns: chromosome,start (1-based), end (inclusive), copyNumber, minorAlleleCopyNumber
+Each sample produces an `<sample>.svcounts.csv` file with the following columns:
 
-VCFs must be bgzipped and indexed (`tabix -p vcf path/to/vcf.gz`)
-
-You need at least one of these files or the results won't be computed.
+| Column | Description                  |
+| ------ | ---------------------------- |
+| sample | Sample identifier            |
+| total  | Total SV count (pass + fail) |
+| pass   | Count of pass SVs            |
+| fail   | Count of fail SVs            |
+| igtcr  | SVs in IG or TCR regions     |
+| igh    | SVs in IGH loci (BCR)        |
+| igk    | SVs in IGK loci (BCR)        |
+| igl    | SVs in IGL loci (BCR)        |
+| tra    | SVs in TRA loci (TCR)        |
+| trb    | SVs in TRB loci (TCR)        |
+| trd    | SVs in TRD loci (TCR)        |
+| trg    | SVs in TRG loci (TCR)        |
