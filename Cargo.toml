@@ -2,6 +2,15 @@
 name = "scarscape"
 version = "0.1.0"
 edition = "2021"
+description = "Extract tumorigenic scars from cancer omics data"
+homepage = "https://github.com/CCICB/scarscape"
+repository = "https://github.com/CCICB/scarscape"
+authors = ["Sam El-Kamand <selkamand@ccia.org.au>"]
+[package.metadata.wix]
+upgrade-guid = "CCE8F431-77AF-4B40-AC10-ADD3A4255B18"
+path-guid = "F911C282-98C1-4037-A8AB-BFBC181FA193"
+license = false
+eula = false
 
 [dependencies]
 anyhow = "1.0.97"
@@ -19,3 +28,8 @@ path-absolutize = "3.1.1"
 regex = "1.11.1"
 rust-htslib = "0.49.0"
 serde = { version = "1.0.219", features = ["derive"] }
+
+# The profile that 'dist' will build with
+[profile.dist]
+inherits = "release"
+lto = "thin"
