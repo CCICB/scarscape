@@ -104,15 +104,13 @@ pub fn read_manifest(path: &PathBuf) -> Result<Vec<ManifestEntry>, anyhow::Error
         }
 
         // Ensure all file paths point to real files (and they're valid file types) -- Continue this
-        match &record.sv {
-            Some(p) => crate::vcf::check_vcf_exists_bgzipped_with_index(p)
-                .context("Structural variant file in manifest")?,
-            None => (),
+        if let Some(p) = &record.sv {
+            crate::vcf::check_vcf_exists_bgzipped_with_index(p)
+                .context("Structural variant file in manifest")?
         }
 
-        match &record.snv {
-            Some(p) => crate::vcf::check_vcf_exists_bgzipped_with_index(p)?,
-            None => (),
+        if let Some(p) = &record.snv {
+            crate::vcf::check_vcf_exists_bgzipped_with_index(p)?
         }
 
         n_entries += 1;
