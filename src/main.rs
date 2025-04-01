@@ -80,7 +80,7 @@ fn run() -> Result<(), anyhow::Error> {
 
     // Log Configuration
     info!(
-        "User Supplied Setttings:  Genome: {}\nSV VCF: {}\nOutput Directory: {}",
+        "User Supplied Setttings:  Genome: {} | SV VCF: {} | Output Directory: {}",
         genome,
         path_manifest.display(),
         outdir.display()

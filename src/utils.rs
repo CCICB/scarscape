@@ -64,7 +64,7 @@ pub fn read_manifest(path: &PathBuf) -> Result<Vec<ManifestEntry>, anyhow::Error
         .context("Failed to read manifest header line")?;
 
     info!(
-        "Found Manifest with {} columns: {}",
+        "Found manifest with {} columns: {}",
         headers.len(),
         headers
             .iter()
@@ -84,6 +84,7 @@ pub fn read_manifest(path: &PathBuf) -> Result<Vec<ManifestEntry>, anyhow::Error
 
     let mut n_entries = 0;
     let mut manifest: Vec<ManifestEntry> = vec![];
+    info!("Checking all files described in manifest are suitable for analysis");
     for result in reader.deserialize() {
         let record: ManifestEntry = result.context("Failed to read manifest record")?;
 
@@ -183,17 +184,6 @@ fn missing_expected_headers(headers: &StringRecord, expected: &[&str]) -> Vec<St
 /// - The conversion of the given path to an absolute path fails.
 /// - The directory creation fails (if the directory does not exist).
 ///
-/// # Examples
-///
-/// ```rust
-/// use std::path::PathBuf;
-///
-/// // Assume `make_output_directory` is imported from your module.
-/// let path = PathBuf::from("relative/path");
-/// let absolute_path = make_output_directory(&path)
-///     .expect("Failed to create or retrieve the output directory");
-/// println!("Absolute path: {:?}", absolute_path);
-/// ```
 ///
 /// [`absolutize`]: trait/YourTraitHere.html
 pub fn make_output_directory(path: &PathBuf) -> Result<PathBuf, anyhow::Error> {
