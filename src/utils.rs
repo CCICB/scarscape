@@ -47,6 +47,8 @@ pub struct ManifestEntry {
     pub cnv: Option<PathBuf>,
 }
 
+/// Reads manifest file into A vector of manifest entries and does some basic QC checks on filetypes
+/// so incorrect filetypes / missing files can be flagged before actually running all the analyses
 pub fn read_manifest(path: &PathBuf) -> Result<Vec<ManifestEntry>, anyhow::Error> {
     match path.exists() {
         true => log::info!("Reading manifest file: {:#?}", path),
