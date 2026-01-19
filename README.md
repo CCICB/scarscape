@@ -32,10 +32,10 @@ Prepare a [manifest](testfiles/manifest.csv) CSV with the following columns:
 *Note:* Each sample must have at least one file type specified (snv, sv, or cnv).
 
 ```{bash}
-scarseek --manifest <path_to_manifest.csv> --genome hg38
+scarseek --manifest <path_to_manifest.csv> --genome hg38 --fasta /path/to/hg38.fasta
 ```
 
-
+Note genome `--genome` argument (hg38/hg19) is used to make some assumptions about regions that hold true for all common hg38/hg19 reference genomes, whereas `--fasta` lets users specify the actual fasta file required for sequence lookup (used in trinucleotide context counts). 
 ---
 
 ## Metrics
@@ -53,19 +53,46 @@ To characterise B & T cell-derived tumors, which may be driven by endogenous mut
 
 ## Output
 
+
+### SV features
+
 Each sample produces an `<sample>.svcounts.csv` file with the following columns:
 
-| Column | Description                  |
-| ------ | ---------------------------- |
-| sample | Sample identifier            |
-| total  | Total SV count (pass + fail) |
-| pass   | Count of pass SVs            |
-| fail   | Count of fail SVs            |
-| igtcr  | SVs in IG or TCR regions     |
-| igh    | SVs in IGH loci (BCR)        |
-| igk    | SVs in IGK loci (BCR)        |
-| igl    | SVs in IGL loci (BCR)        |
-| tra    | SVs in TRA loci (TCR)        |
-| trb    | SVs in TRB loci (TCR)        |
-| trd    | SVs in TRD loci (TCR)        |
-| trg    | SVs in TRG loci (TCR)        |
+| Column | Description                   |
+| ------ | ----------------------------- |
+| sample | Sample identifier             |
+| total  | Total SV count (pass + fail)  |
+| pass   | Count of pass SVs             |
+| fail   | Count of fail SVs             |
+| igtcr  | PASS SVs in IG or TCR regions |
+| igh    | PASS SVs in IGH loci (BCR)    |
+| igk    | PASS SVs in IGK loci (BCR)    |
+| igl    | PASS SVs in IGL loci (BCR)    |
+| tra    | PASS SVs in TRA loci (TCR)    |
+| trb    | PASS SVs in TRB loci (TCR)    |
+| trd    | PASS SVs in TRD loci (TCR)    |
+| trg    | PASS SVs in TRG loci (TCR)    |
+
+
+### Small variant features
+Each sample produces an `<sample>.smallvariantcounts.csv` file with the following columns:
+
+| Column               | Description                                                                   |
+| -------------------- | ----------------------------------------------------------------------------- |
+| sample               | Sample identifier                                                             |
+| small_variants       | Total PASS SNVs, Doublets & Indels                                            |
+| snvs                 | Count of pass SNVs                                                            |
+| indels               | Count of pass Insertions and Deletions                                        |
+| doublets             | Count of pass doublets (pairs of neighbouring bases both mutated), non-phased |
+| igtcr_small_variants | Count of pass variants in IG or TCR regions                                   |
+| igh_small_variants   | PASS SNVs in IGH loci (BCR)                                                   |
+| igk_small_variants   | PASS SNVs in IGK loci (BCR)                                                   |
+| igl_small_variants   | PASS SNVs in IGL loci (BCR)                                                   |
+| tra_small_variants   | PASS SNVs in TRA loci (TCR)                                                   |
+| trb_small_variants   | PASS SNVs in TRB loci (TCR)                                                   |
+| trd_small_variants   | PASS SNVs in TRD loci (TCR)                                                   |
+| trg_small_variants   | PASS SNVs in TRG loci (TCR)                                                   |
+
+Each sample produces an `<sample>.sbs96.csv` file with the following columns:
+
+Standard SBS96 feature counts 

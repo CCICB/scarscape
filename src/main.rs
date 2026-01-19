@@ -22,6 +22,10 @@ struct Cli {
     #[arg(value_enum, short, long, value_name = "hg38/hg19")]
     genome: Genome,
 
+    /// Reference genome (fasta file) used for mutation calling.
+    #[arg(short, long, value_name = "hg38.fasta/hg19.fasta")]
+    fasta: PathBuf,
+
     /// Output folder. Will create if it does not exist
     #[arg(short, long, value_name = "scars", default_value = "scars")]
     outdir: PathBuf,
@@ -70,6 +74,7 @@ fn run() -> Result<(), anyhow::Error> {
     // Settings
     let genome: Genome = cli.genome;
     let path_manifest = cli.manifest;
+    let path_genome: PathBuf = cli.fasta;
 
     // Read Manifest
     let manifest = scarscape::utils::read_manifest(&path_manifest)?;
@@ -96,7 +101,7 @@ fn run() -> Result<(), anyhow::Error> {
                     &manifest_entry.sample
                 );
                 let sv_summary = scarscape::vcf::sv_vcf_counts(&svpath, &genome)?;
-                info!("Successfully computed SV statistics. {}", sv_summary);
+                info!("Successfully computed SV statistics. {sv_summary}");
                 let outfile = &outdir.join(format!("{}.svcounts.csv", &manifest_entry.sample));
                 info!("Writing SV counts to file: {}", outfile.display());
 
@@ -119,7 +124,43 @@ fn run() -> Result<(), anyhow::Error> {
                 Ok(())
             }
         };
-        // Somatic SNV counts
+
+        // Small Variant Counts
+        let _ = match manifest_entry.snv {
+            Some(snvpath) => {
+                info!(
+                    "Extracting small variant counts for sample [{}]",
+                    &manifest_entry.sample
+                );
+                let small_variant_summary =
+                    scarscape::vcf::small_variant_counts(&snvpath, &genome, &path_genome)?;
+                info!("Successfully computed small variant statistics. {small_variant_summary}");
+                let outfile =
+                    &outdir.join(format!("{}.smallvariantcounts.csv", &manifest_entry.sample));
+                info!(
+                    "Writing small variant counts to file: {}",
+                    outfile.display()
+                );
+
+                if outfile.exists() {
+                    bail!("Failed to write small variant counts to [{}] as file already exists. Please manually remove and try again", outfile.display());
+                };
+
+                small_variant_summary
+                    .write_to_csv(&manifest_entry.sample, outfile)
+                    .context(format!(
+                        "Failed to write structural variant counts to [{}]",
+                        &outfile.display()
+                    ))
+            }
+            None => {
+                warn!(
+                    "Skipping computation of SV counts for sample [{}] as no SV VCF is supplied",
+                    &manifest_entry.sample
+                );
+                Ok(())
+            }
+        };
     }
     Ok(())
 }

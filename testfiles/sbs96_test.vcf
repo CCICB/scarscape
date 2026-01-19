@@ -1,0 +1,16 @@
+##fileformat=VCFv4.2
+##contig=<ID=chr1,length=20>
+##FILTER=<ID=q10,Description="Quality below 10">
+#CHROM	POS	ID	REF	ALT	QUAL	FILTER	INFO
+chr1	2	.	C	A	.	PASS	.    # context A[C>A]A
+chr1	3	.	G	T	.	q10	.    # context C[G>T]T (non-PASS)
+chr1	5	.	T	A	.	PASS	.    # context G[T>A]T
+chr1	6	.	T	C	.	PASS	.    # context T[T>C]C
+chr1	7	.	C	T	.	PASS	.    # context T[C>T]A
+chr1	8	.	A	C	.	q10	.    # context T[A>C]G (non-PASS)
+chr1	10	.	T	G	.	PASS	.   # context G[T>G]A
+chr1	12	.	C	T	.	PASS	.   # context A[C>T]G
+chr1	15	.	T	C	.	PASS	.   # context A[T>C]C
+chr1	16	.	C	G	.	PASS	.   # context T[C>G]G
+chr1	18	.	T	G	.	PASS	.   # context G[T>G]C
+chr1	19	.	C	A	.	PASS	.   # context T[C>A]A

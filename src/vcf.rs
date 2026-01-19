@@ -5,10 +5,13 @@ use bedrs::Coordinates;
 use bedrs::IntervalContainer;
 use log::info;
 use log::warn;
+use noodles::core::position;
 use noodles::core::Region;
 use noodles::csi::BinningIndex;
 use noodles::tabix;
 use noodles::vcf;
+use noodles_vcf::header::record::value::map::alternative_allele;
+use noodles_vcf::variant::record::AlternateBases;
 use noodles_vcf::variant::record::Filters;
 use regex::Regex;
 use serde::Deserialize;
@@ -654,6 +657,383 @@ struct ScarScapeBed4 {
     name: String,
 }
 
+pub struct SmallVariantSummary {
+    small_variants: u64,
+    small_variant_fail: u64,
+    snvs: u64,
+    doublets: u64,
+    mnvs: u64,
+    deletions: u64,
+    insertions: u64,
+    igtcr_small_varaints: u64,
+    igh: u64,
+    igk: u64,
+    igl: u64,
+    tra: u64,
+    trb: u64,
+    trd: u64,
+    trg: u64,
+    sbs96: SBS96,
+}
+impl SmallVariantSummary {
+    // Compute total number of pass indels (insertions + deletions)
+    fn indels(&self) -> u64 {
+        self.insertions + self.deletions
+    }
+
+    /// Formats the small variant summary as a CSV string.
+    ///
+    /// # Arguments
+    ///
+    /// * `sample` - A string slice that holds the sample identifier.
+    ///
+    /// # Returns
+    ///
+    /// A `String` containing the CSV-formatted summary.
+    pub fn to_csv(&self, sample: &str) -> String {
+        format!(
+            "sample,total,pass,fail,snv,doublet,mnv,indels,insertions,deletions,igtcr,igh,igk,igl,tra,trb,trd,trg\n\
+             {},{},{},{},{},{},{},{},{},{},{},{},{},{},{},{},{},{}",
+            sample,
+            self.small_variants,
+            self.small_variants,
+            self.small_variant_fail,
+            self.snvs,
+            self.doublets,
+            self.mnvs,
+            self.indels(),
+            self.insertions,
+            self.deletions,
+            self.igtcr_small_varaints,
+            self.igh,
+            self.igk,
+            self.igl,
+            self.tra,
+            self.trb,
+            self.trd,
+            self.trg,
+        )
+    }
+
+    /// Writes the CSV string representation of the summary to the specified file.
+    ///
+    /// # Arguments
+    ///
+    /// * `sample` - A string slice that holds the sample identifier.
+    /// * `path` - A reference to the destination file path.
+    ///
+    /// # Errors
+    ///
+    /// Returns an error if the file already exists or if writing fails.
+    pub fn write_to_csv(&self, sample: &str, path: &PathBuf) -> Result<(), anyhow::Error> {
+        if path.exists() {
+            bail!(
+                "File [{}] already exists. Can NOT overwrite. Please manually delete and retry.",
+                path.display()
+            );
+        }
+
+        let csv_data = self.to_csv(sample);
+        std::fs::write(path, csv_data)?;
+        Ok(())
+    }
+}
+
+impl fmt::Display for SmallVariantSummary {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        write!(
+            f,
+            "Small variant stats [total: {} (pass: {}, fail: {}) | SNV: {}, doublet: {}, MNV: {} | indels: {} (ins: {}, del: {}) | IGTCR: {} (IGH: {}, IGK: {}, IGL: {}, TRA: {}, TRB: {}, TRD: {}, TRG: {})]",
+            self.small_variants,
+            self.small_variants,
+            self.small_variant_fail,
+            self.snvs,
+            self.doublets,
+            self.mnvs,
+            self.indels(),
+            self.insertions,
+            self.deletions,
+            self.igtcr_small_varaints,
+            self.igh,
+            self.igk,
+            self.igl,
+            self.tra,
+            self.trb,
+            self.trd,
+            self.trg,
+        )
+    }
+}
+
+pub struct SBS96 {
+    counts: HashMap<String, u64>,
+}
+
+impl SBS96 {
+    /// All 96 trinucleotide mutation contexts
+    const CONTEXTS: [&'static str; 96] = [
+        "A[C>A]A", "A[C>A]C", "A[C>A]G", "A[C>A]T", "C[C>A]A", "C[C>A]C", "C[C>A]G", "C[C>A]T",
+        "G[C>A]A", "G[C>A]C", "G[C>A]G", "G[C>A]T", "T[C>A]A", "T[C>A]C", "T[C>A]G", "T[C>A]T",
+        "A[C>G]A", "A[C>G]C", "A[C>G]G", "A[C>G]T", "C[C>G]A", "C[C>G]C", "C[C>G]G", "C[C>G]T",
+        "G[C>G]A", "G[C>G]C", "G[C>G]G", "G[C>G]T", "T[C>G]A", "T[C>G]C", "T[C>G]G", "T[C>G]T",
+        "A[C>T]A", "A[C>T]C", "A[C>T]G", "A[C>T]T", "C[C>T]A", "C[C>T]C", "C[C>T]G", "C[C>T]T",
+        "G[C>T]A", "G[C>T]C", "G[C>T]G", "G[C>T]T", "T[C>T]A", "T[C>T]C", "T[C>T]G", "T[C>T]T",
+        "A[T>A]A", "A[T>A]C", "A[T>A]G", "A[T>A]T", "C[T>A]A", "C[T>A]C", "C[T>A]G", "C[T>A]T",
+        "G[T>A]A", "G[T>A]C", "G[T>A]G", "G[T>A]T", "T[T>A]A", "T[T>A]C", "T[T>A]G", "T[T>A]T",
+        "A[T>C]A", "A[T>C]C", "A[T>C]G", "A[T>C]T", "C[T>C]A", "C[T>C]C", "C[T>C]G", "C[T>C]T",
+        "G[T>C]A", "G[T>C]C", "G[T>C]G", "G[T>C]T", "T[T>C]A", "T[T>C]C", "T[T>C]G", "T[T>C]T",
+        "A[T>G]A", "A[T>G]C", "A[T>G]G", "A[T>G]T", "C[T>G]A", "C[T>G]C", "C[T>G]G", "C[T>G]T",
+        "G[T>G]A", "G[T>G]C", "G[T>G]G", "G[T>G]T", "T[T>G]A", "T[T>G]C", "T[T>G]G", "T[T>G]T",
+    ];
+
+    /// Create a new SBS96 with all context‐counts set to zero.
+    pub fn new() -> Self {
+        let mut counts = HashMap::with_capacity(Self::CONTEXTS.len());
+        for &ctx in Self::CONTEXTS.iter() {
+            counts.insert(ctx.to_string(), 0);
+        }
+        SBS96 { counts }
+    }
+
+    /// Increment the count for a given context (panics if invalid key).
+    pub fn bump(&mut self, context: &str) {
+        if let Some(count) = self.counts.get_mut(context) {
+            *count += 1;
+        } else {
+            panic!("Invalid mutation context: {}", context);
+        }
+    }
+
+    /// Get the count for a context (or zero if never initialized).
+    pub fn get(&self, context: &str) -> u64 {
+        *self.counts.get(context).unwrap_or(&0)
+    }
+
+    /// Iterate through all (context, count) pairs.
+    pub fn iter(&self) -> impl Iterator<Item = (&String, &u64)> {
+        self.counts.iter()
+    }
+}
+
+#[derive(Debug)]
+enum SmallVariantTypes {
+    SNV,
+    DOUBLET,
+    MNV,
+    INSERTION,
+    DELETION,
+}
+
+impl fmt::Display for SmallVariantTypes {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        let s = match self {
+            SmallVariantTypes::SNV => "SNV",
+            SmallVariantTypes::DOUBLET => "DOUBLET",
+            SmallVariantTypes::MNV => "MNV",
+            SmallVariantTypes::INSERTION => "INSERTION",
+            SmallVariantTypes::DELETION => "DELETION",
+        };
+        write!(f, "{s}")
+    }
+}
+
+pub fn small_variant_counts(
+    path: &PathBuf, // Path to SNV VCF file
+    genome: &Genome,
+    ref_fasta: &PathBuf,
+) -> Result<SmallVariantSummary, anyhow::Error> {
+    // Read VCF file
+    info!("Reading VCF file: {:#?}", path);
+
+    // Check file exists and is an indexed BCF/VCF file so we can query it
+    check_vcf_exists_bgzipped_with_index(path)?;
+
+    // Check Index Exists
+    let _index_path = assert_index_file_exists(path)?;
+    let chroms = list_vcf_chromosomes_from_vcf_header(path)?;
+    let vcf_uses_chr_prefix = chroms_include_chr(&chroms);
+
+    // Read BED file into regions object describing TCR and BCR gene regions
+    let igtcr_regions = get_igtcr_regions_bedrs(genome, vcf_uses_chr_prefix)
+        .context("Failed to prepare IGTCR regions")?;
+
+    // Read Small Variant VCF
+    let mut vcf_reader = vcf::io::indexed_reader::Builder::default().build_from_path(path)?;
+    info!("Successfully to read VCF [{path:#?}]");
+
+    let mut npass: u64 = 0;
+    let mut nfail: u64 = 0;
+    let mut snvs: u64 = 0;
+    let mut doublets: u64 = 0;
+    let mut mnvs: u64 = 0;
+    let mut insertions: u64 = 0;
+    let mut deletions: u64 = 0;
+
+    let header = vcf_reader.read_header()?;
+
+    // Count Small Variants (General stats, PASS / FAIL / Total)
+    for result in vcf_reader.records() {
+        let record = result?;
+        let pass = record
+            .filters()
+            .is_pass(&header)
+            .expect("Failed to get sv filter");
+
+        let variant = parse_vcf_record(&record)?;
+
+        if variant.multiallelic {
+            log::warn!("Small variant  VCF contains mutations with multiple alternative bases [{variant}]. Scarscape will only considering the first mutation. Run VCFs through VCF normalise to split multiallelics to have both alternative alleles counted")
+        }
+
+        if pass {
+            npass += 1;
+            match variant.class {
+                SmallVariantTypes::SNV => snvs += 1,
+                SmallVariantTypes::DOUBLET => doublets += 1,
+                SmallVariantTypes::MNV => mnvs += 1,
+                SmallVariantTypes::INSERTION => insertions += 1,
+                SmallVariantTypes::DELETION => deletions += 1,
+            }
+        } else {
+            nfail += 1
+        }
+    }
+
+    // Count PASS small variants in IGTCR regions using vcftools region query
+    let mut counts = count_pass_variants_in_regions_bedrs(igtcr_regions, path)?;
+
+    // Ensure there is a value for all samples of interest
+    counts.entry(String::from("IGH")).or_insert(0);
+    counts.entry(String::from("IGK")).or_insert(0);
+    counts.entry(String::from("IGL")).or_insert(0);
+    counts.entry(String::from("TRA")).or_insert(0);
+    counts.entry(String::from("TRB")).or_insert(0);
+    counts.entry(String::from("TRD")).or_insert(0);
+    counts.entry(String::from("TRG")).or_insert(0);
+
+    // Sum igtcr small variants
+    let pass_igtcr = counts.iter().map(|x| x.1).sum();
+
+    let small_variant_summary = SmallVariantSummary {
+        small_variants: npass,
+        small_variant_fail: nfail,
+        igtcr_small_varaints: pass_igtcr,
+        snvs,
+        doublets,
+        mnvs,
+        insertions,
+        deletions,
+        igh: *counts.get("IGH").unwrap(),
+        igk: *counts.get("IGK").unwrap(),
+        igl: *counts.get("IGL").unwrap(),
+        tra: *counts.get("TRA").unwrap(),
+        trb: *counts.get("TRB").unwrap(),
+        trd: *counts.get("TRD").unwrap(),
+        trg: *counts.get("TRG").unwrap(),
+        sbs96: SBS96::new(),
+    };
+
+    Ok(small_variant_summary)
+}
+
+#[derive(Debug)]
+pub struct Variant {
+    chromosome: String,
+    position: noodles::core::Position, // 1-based position (start)
+    reference: String,
+    alternative: String,
+    delta: i64, // how big is the change to genome size (1 = inserting 1 base, -1 = deleting 1 base, etc)
+    class: SmallVariantTypes,
+    multiallelic: bool,
+}
+// Implement the `fmt::Display` trait for `Point`.
+impl fmt::Display for Variant {
+    // This trait requires the `fmt` function with this exact signature.
+    fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
+        // Use the write! macro to format the output.
+        write!(
+            f,
+            "{}:{} {}>{} (delta: {}; class: {}; multiallelic:{})",
+            self.chromosome,
+            self.position,
+            self.reference,
+            self.alternative,
+            self.delta,
+            self.class,
+            self.multiallelic
+        )
+    }
+}
+
+// Parses Variants from noodles VCF records - classifies VariantType. If multiallelic - drops all but the first allele.
+pub fn parse_vcf_record(record: &noodles_vcf::Record) -> Result<Variant, anyhow::Error> {
+    // Chromosome Name
+    let chromosome = record.reference_sequence_name().to_string();
+
+    // 1 based position
+    let position = match record.variant_start() {
+        Some(pos) => pos?,
+        None => bail!("Couldn't get VCF entry position"),
+    };
+
+    // Reference base
+    let reference = record.reference_bases().to_string();
+
+    // Alternative base (pluck first alt for multiallelics)
+    let altbases = record.alternate_bases();
+    let multiallelic = altbases.len() > 1;
+    let mut alternative: String = "".to_string();
+    if !altbases.is_empty() {
+        alternative = match altbases.iter().next() {
+            Some(seq) => seq.unwrap_or("").to_string(),
+            None => "".to_string(),
+        };
+    };
+
+    // Classifying mutation type
+    let alt_length = alternative.len();
+    let ref_length = reference.len();
+    let class = classify_small_variant(&reference, &alternative);
+    let delta = alt_length as i64 - ref_length as i64;
+
+    // Grab Allele Frequency
+    Ok(Variant {
+        chromosome,
+        position,
+        reference,
+        alternative,
+        delta,
+        class,
+        multiallelic,
+    })
+}
+
+// Minimal starter classifier so the function compiles.
+// Replace with your real rules.
+fn classify_small_variant(reference: &str, alternative: &str) -> SmallVariantTypes {
+    // If ALT was missing and we defaulted to "", don’t crash downstream.
+    if reference.is_empty() || alternative.is_empty() {
+        return SmallVariantTypes::SNV;
+    }
+
+    let r = reference.len();
+    let a = alternative.len();
+
+    if r == 1 && a == 1 {
+        SmallVariantTypes::SNV
+    } else if r == 2 && a == 2 {
+        SmallVariantTypes::DOUBLET
+    } else if r == a && r > 2 {
+        SmallVariantTypes::MNV
+    } else if a > r {
+        SmallVariantTypes::INSERTION
+    } else if r > a {
+        SmallVariantTypes::DELETION
+    } else {
+        panic!("Unsure how to classify the small variant [{reference}>{alternative}]:");
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -819,10 +1199,7 @@ mod tests {
         let filetype = path_to_filetype(&bgzf_path);
         match filetype {
             FileType::VcfCompressedBgzip => {}
-            _ => panic!(
-                "Expected VcfCompressedBgzip, got {:?} from file: {:#?}",
-                filetype, bgzf_path
-            ),
+            _ => panic!("Expected VcfCompressedBgzip, got {filetype:?} from file: {bgzf_path:#?}"),
         }
 
         // For a file with extension ".vcf.gz", simulate a file that is not BGZF.
@@ -977,8 +1354,7 @@ mod tests {
         // Ensure that the file exists. If it doesn't, the test should fail immediately.
         assert!(
             vcf_path.exists(),
-            "The test VCF file {:?} does not exist.",
-            vcf_path
+            "The test VCF file {vcf_path:?} does not exist."
         );
 
         // Run the variant counting function.
