@@ -20,6 +20,7 @@ use std::collections::HashSet;
 use std::fmt;
 use std::io::Read;
 use std::path::Path;
+use std::string;
 use std::{fs::File, path::PathBuf};
 
 use crate::utils::Genome;
@@ -1031,6 +1032,16 @@ fn classify_small_variant(reference: &str, alternative: &str) -> SmallVariantTyp
         SmallVariantTypes::DELETION
     } else {
         panic!("Unsure how to classify the small variant [{reference}>{alternative}]:");
+    }
+}
+
+pub fn classify_small_variant_trinucleotide_context(
+    variant: Variant,
+    fasta: &PathBuf,
+) -> Option<String> {
+    match variant.class {
+        SmallVariantTypes::SNV => return (Some("later".to_string())),
+        _ => return (None),
     }
 }
 

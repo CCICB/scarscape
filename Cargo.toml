@@ -21,7 +21,7 @@ fern = { version = "0.7.1", features = ["colored"] }
 granges = "0.2.2"
 humantime = "2.2.0"
 log = "0.4.26"
-noodles = { version = "0.94.0", features = ["bed", "core", "csi", "tabix", "vcf"] }
+noodles = { version = "0.94.0", features = ["bed", "core", "csi", "fasta", "tabix", "vcf"] }
 noodles-vcf = "0.75.0"
 path-absolutize = "3.1.1"
 regex = "1.11.1"

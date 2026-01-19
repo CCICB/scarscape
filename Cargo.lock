@@ -573,7 +573,7 @@ checksum = "a2212020b3faa067f38e4b5ecd558ff85a84f05d772882590d79cb772dadbbd1"
 dependencies = [
  "noodles-bed 0.12.0",
  "noodles-core 0.14.0",
- "noodles-fasta",
+ "noodles-fasta 0.32.0",
 ]
 
 [[package]]
@@ -585,6 +585,7 @@ dependencies = [
  "noodles-bed 0.22.0",
  "noodles-core 0.17.0",
  "noodles-csi",
+ "noodles-fasta 0.50.0",
  "noodles-tabix",
  "noodles-vcf",
 ]
@@ -676,6 +677,19 @@ dependencies = [
  "memchr",
  "noodles-bgzf 0.26.0",
  "noodles-core 0.14.0",
+]
+
+[[package]]
+name = "noodles-fasta"
+version = "0.50.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "70fcad7421d77cc23062a7e26b08933d1eeb471cd91318be1a7c3398bd835f45"
+dependencies = [
+ "bstr",
+ "bytes",
+ "memchr",
+ "noodles-bgzf 0.37.0",
+ "noodles-core 0.17.0",
 ]
 
 [[package]]
