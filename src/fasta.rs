@@ -3,7 +3,7 @@ use std::path::PathBuf;
 use anyhow::Error;
 use noodles::{
     core::{Position, Region},
-    fasta::{self, record::Sequence},
+    fasta::record::Sequence,
 };
 pub fn fetch_seq(path: &PathBuf, region: &Region) -> Result<Sequence, Error> {
     // Parse file
