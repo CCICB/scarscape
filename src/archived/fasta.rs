@@ -5,6 +5,8 @@ use noodles::{
     core::{Position, Region},
     fasta::record::Sequence,
 };
+
+/// Fetch Helper
 pub fn fetch_seq(path: &PathBuf, region: &Region) -> Result<Sequence, Error> {
     // Parse file
     let mut reader = fasta::io::indexed_reader::Builder::default().build_from_path(path)?;

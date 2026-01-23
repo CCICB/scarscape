@@ -895,6 +895,12 @@ pub fn small_variant_counts(
                 SmallVariantTypes::INSERTION => insertions += 1,
                 SmallVariantTypes::DELETION => deletions += 1,
             }
+
+            // Get SBS96 Context if SNV
+            if variant.class == SmallVariantTypes::SNV {
+                noodles::fasta::
+            }
+
         } else {
             nfail += 1
         }
