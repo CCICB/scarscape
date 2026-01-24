@@ -20,6 +20,8 @@ Genome statistics do not require large amounts of memory to compute.
 - `scarscape` should use negligable memory to leave room for parallelisation.
 - Inputs are processed as streams/iterators wherever possible.
 - Avoid loading whole VCFs or entire genomes into memory.
+- Small configuration inputs (e.g. manifests, reference bundle metadata) may be fully loaded into memory to simplify strict validation and better error messages.
+
 
 ### Fail fast where correctness is threatened
 - Invalid or inconsistent inputs should yield **actionable, sample-scoped errors** early.
@@ -47,6 +49,7 @@ Genome statistics do not require large amounts of memory to compute.
 - Compute summary statistics.
 - Know about output schemas.
 - Accumulate large intermediate datasets.
+
 
 **Handoff artifact**
 - **Normalized event streams** (iterators) that yield validated domain events.
@@ -165,3 +168,58 @@ A feature is “done” when:
 - it fails with actionable messages on malformed inputs,
 - it is covered by unit tests at the adapter boundary and engine boundary, and
 - it does not introduce cross-layer leakage (e.g. VCF parsing in stats, formatting in engines).
+
+
+# Detailed Module Contracts
+
+## Adapter contract (uniform I/O API)
+
+All input formats (manifest, VCFs, segment tables, region sets, opportunities tables) are implemented as **I/O adapters** with an intentionally small, opinionated, and uniform structure.
+
+The goal is to make every adapter:
+- **easy to use** (the same mental model for every file type),
+- **easy to test** (parsing can run on in-memory bytes),
+- **streaming-first** (downstream consumes an iterator of domain records).
+
+### Required pieces of every adapter
+
+Each adapter must provide the following pieces (even if some are trivial for a given file type):
+
+1. **Open / decode**
+   - Opens a path and constructs the appropriate byte source:
+     - decompression (e.g. gzip/bgzip) if required
+     - index checks (e.g. `.tbi`) if required
+   - This stage performs **filesystem concerns only**.
+   - It must not implement record semantics or normalization logic.
+
+2. **Parse from reader**
+   - Accepts a generic byte stream (`Read`/`BufRead`) and yields **raw records**.
+   - This is the core test seam: unit tests feed in-memory bytes without touching the filesystem.
+   - Parsing is strict and deterministic.
+
+3. **Validate + normalize**
+   - Converts raw records into **normalized domain records** and enforces format invariants.
+   - Any record emitted downstream must satisfy the adapter’s normalization contract.
+   - If correctness of downstream statistics would be compromised, the adapter must error.
+
+4. **Stream of domain records (the handoff)**
+   - The adapter’s public output is an **iterator of domain structs** (normalized events).
+   - Stats engines and reporting never parse file formats; they only consume these iterators.
+
+### Uniform public surface
+
+Every adapter exposes the same two entry points:
+
+- `from_path(path) -> Iterator<Item = Result<DomainRecord, AdapterError>>`
+  - Production entry point: includes open/decode/index checks.
+
+- `from_reader(reader) -> Iterator<Item = Result<DomainRecord, AdapterError>>`
+  - Test entry point: bypasses filesystem and allows in-memory inputs.
+
+This ensures:
+- all adapters are consumed the same way in the pipeline,
+- all adapters are unit-tested the same way,
+- large inputs remain streaming by default.
+
+> Contract: If an adapter yields a domain record, it is structurally valid and normalized to the degree required by downstream computations.
+
