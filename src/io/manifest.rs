@@ -42,7 +42,7 @@ pub struct ColumnIndexes {
 /// how to turn a row into one SampleInput. By implementing an Iterator for this reader we can
 /// then iterate over every sample in our manifest
 ///
-/// - TSV with headers
+/// - CSV with headers
 /// - `#` comment lines allowed
 /// - required columns: `sample`, `snv`
 /// - optional columns: `sv`, `cnv`
@@ -228,11 +228,15 @@ fn get_required_field<'a>(
     Ok(v)
 }
 
-fn get_optional_field<'a>(record: &'a StringRecord, col: &OptionalCol) -> Option<&'a str> {
-    let idx: usize = col.idx?;
-
-    // Return Record
-    record.get(idx)
+fn get_optional_field<'a>(record: &'a csv::StringRecord, idx: Option<usize>) -> Option<&'a str> {
+    let i = idx?;
+    let raw = record.get(i)?;
+    let trimmed = raw.trim();
+    if trimmed.is_empty() {
+        None
+    } else {
+        Some(trimmed)
+    }
 }
 
 /// Fetch the index of the column named 'col'
