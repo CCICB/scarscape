@@ -110,7 +110,7 @@ impl<R: BufRead> ManifestReader<R> {
                 idx: 0,
             },
             snv: RequiredCol {
-                name: "sample".to_string(),
+                name: "snv".to_string(),
                 idx: 0,
             },
             sv: OptionalCol {
