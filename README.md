@@ -1,4 +1,4 @@
-# ScarScape
+<!-- # ScarScape <img src="assets/banner.png" align="right" height="138"/> -->
 
 > \[!WARNING\]  
 > This package is in early development and not ready for use
@@ -96,3 +96,9 @@ Each sample produces an `<sample>.smallvariantcounts.csv` file with the followin
 Each sample produces an `<sample>.sbs96.csv` file with the following columns:
 
 Standard SBS96 feature counts 
+
+
+### Architecture
+
+
+![Architecture](asserts/architecture.png)
