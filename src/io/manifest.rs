@@ -1,5 +1,5 @@
 use crate::error::{Error, Result};
-use crate::model::{SampleId, SampleInputs};
+use crate::model::{ManifestEntry, SampleId};
 use csv::StringRecord;
 use std::fs::File;
 use std::io::{self, BufRead, BufReader, Read};
@@ -148,7 +148,7 @@ impl<R: BufRead> ManifestReader<R> {
 /// Implement Iterator for ManifestReader so we can iterate through records
 /// This requires implementation of the functions: `next`
 impl<R: BufRead> Iterator for ManifestReader<R> {
-    type Item = Result<SampleInputs>;
+    type Item = Result<ManifestEntry>;
 
     fn next(&mut self) -> Option<Self::Item> {
         // Here Item is a Result<SampleInput, Error> result
@@ -191,7 +191,7 @@ fn parse_record(
     columns: &ColumnIndexes,
     record_index: usize,
     base_dir: Option<&Path>,
-) -> Result<SampleInputs> {
+) -> Result<ManifestEntry> {
     let sample_raw = get_required_field(record, &columns.sample, record_index)?;
     let snv_raw = get_required_field(record, &columns.snv, record_index)?;
 
@@ -203,7 +203,7 @@ fn parse_record(
 
     let cnv_segments = get_optional_field(record, &columns.cnv).map(|s| resolve_path(base_dir, s));
 
-    Ok(SampleInputs {
+    Ok(ManifestEntry {
         sample: sample_id,
         snv_vcf,
         sv_vcf,

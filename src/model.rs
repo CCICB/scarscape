@@ -40,14 +40,14 @@ impl std::fmt::Display for SampleId {
 /// The normalized, domain-level record produced by the Manifest parser.
 ///
 #[derive(Debug, Clone, PartialEq, Eq)]
-pub struct SampleInputs {
+pub struct ManifestEntry {
     pub sample: SampleId,
     pub snv_vcf: PathBuf,
     pub sv_vcf: Option<PathBuf>,
     pub cnv_segments: Option<PathBuf>,
 }
 
-impl fmt::Display for SampleInputs {
+impl fmt::Display for ManifestEntry {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         writeln!(f, "-------------------")?;
         writeln!(f, "Sample ID: {}", self.sample)?;
