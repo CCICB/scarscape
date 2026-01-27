@@ -1,45 +1,33 @@
-//! Central error types for scarscape.
+//! Error types for scarscape.
+//!
+//! At the top of each rust script we can add `use crate::error::*``;
+//! to gain access to our error enums AND a convenient Result alias that forces use of this
+//! internal error type
 
-use std::path::PathBuf;
-use thiserror::Error;
+#[derive(Debug, thiserror::Error, Clone, PartialEq, Eq)]
+pub enum Error {
+    // Manifest Parsing Errors
+    #[error("missing required column '{0}'")]
+    ManifestMissingColumn(String),
 
-#[derive(Debug, Error)]
-pub enum ManifestError {
-    #[error("failed to read manifest: {path}")]
-    ReadFailed {
-        path: PathBuf,
-        source: std::io::Error,
-    },
+    #[error("missing required value at record {record}, column '{col}'")]
+    ManifestMissingValue { record: usize, col: String },
 
-    #[error("failed to parse manifest TSV: {path}")]
-    ParseFailed { path: PathBuf, source: csv::Error },
+    #[error("invalid sample_id at record {record}: {reason}")]
+    ManifestInvalidSampleId { record: usize, reason: &'static str },
 
-    #[error("manifest is missing required column: {col}")]
-    MissingColumn { col: &'static str },
+    #[error("duplicate sample identifier '{sample_id}'")]
+    ManifestDuplicateSampleId { sample_id: String },
 
-    #[error("manifest contains duplicate sample_id: {sample_id}")]
-    DuplicateSampleId { sample_id: String },
+    #[error("failed to parse manifest")]
+    ManifestParse,
 
-    #[error("invalid sample_id at row {row}: {reason}")]
-    InvalidSampleId { row: usize, reason: &'static str },
+    #[error("Sample Id is empty at record {record}")]
+    SampleIdEmpty { record: usize },
 
-    #[error("missing required value at row {row}, column '{col}'")]
-    MissingValue { row: usize, col: &'static str },
-
-    #[error("input file does not exist for sample '{sample_id}': {path}")]
-    MissingFile { sample_id: String, path: PathBuf },
-
-    #[error("input path is not a file for sample '{sample_id}': {path}")]
-    NotAFile { sample_id: String, path: PathBuf },
+    #[error("Failed to convert string slice [{0}] to PathBuf")]
+    StringSliceToPathBuf(String),
 }
 
-#[derive(Debug, Error)]
-pub enum ScarscapeError {
-    #[error(transparent)]
-    Manifest(#[from] ManifestError),
-    // Later:
-    // #[error(transparent)]
-    // Vcf(#[from] VcfError),
-    // #[error(transparent)]
-    // Cnv(#[from] CnvError),
-}
+// A custom Result type that forces use of scarscape's internal Error type
+pub type Result<T> = std::result::Result<T, crate::error::Error>;
