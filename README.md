@@ -1,4 +1,4 @@
-<!-- # ScarScape <img src="assets/banner.png" align="right" height="138"/> -->
+![header](assets/banner.png)
 
 > \[!WARNING\]  
 > This package is in early development and not ready for use
@@ -101,4 +101,4 @@ Standard SBS96 feature counts
 ### Architecture
 
 
-![Architecture](asserts/architecture.png)
+![Architecture](assets/architecture.png)
