@@ -57,6 +57,26 @@ pub enum Error {
 
     #[error("failed to read file header for BGZF check: {path}")]
     ReadFailed { path: PathBuf },
+
+    // --- VCF I/O / parsing ---
+    #[error("failed to read VCF header")]
+    VcfHeaderRead,
+
+    #[error("failed to read VCF record at index {record}")]
+    VcfRecordRead {
+        record: usize, // 1-based
+    },
+
+    // --- Record content errors ---
+    #[error("VCF record {record} has unsupported ALT allele: {alt}")]
+    UnsupportedVcfAlt { record: usize, alt: String },
+
+    #[error("VCF record {record} has invalid {which} allele sequence: {allele}")]
+    InvalidAlleleSequence {
+        record: usize,
+        which: &'static str, // "REF" or "ALT"
+        allele: String,
+    },
 }
 
 // A custom Result type that forces use of scarscape's internal Error type

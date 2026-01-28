@@ -7,10 +7,7 @@
 
 use crate::error::*;
 use crate::io::utils::*;
-use bedrs::Segment;
 use core::fmt;
-use noodles_vcf::record::samples::Sample;
-use std::os::unix::fs::FileTypeExt;
 use std::path::PathBuf;
 
 #[derive(Debug, Clone, PartialEq, Eq, Hash)]
