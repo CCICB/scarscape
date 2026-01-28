@@ -35,7 +35,8 @@ Note: Each sample must have at least one file type specified (snv, sv, or cnv).
 scarseek --manifest <path_to_manifest.csv> --genome hg38 --fasta /path/to/hg38.fasta
 ```
 
-Note genome `--genome` argument (hg38/hg19) is used to make some assumptions about regions that hold true for all common hg38/hg19 reference genomes, whereas `--fasta` lets users specify the actual fasta file required for sequence lookup (used in trinucleotide context counts). 
+*Note* genome `--genome` argument (hg38/hg19) is used to make some assumptions about regions that hold true for all common hg38/hg19 reference genomes, whereas `--fasta` lets users specify the actual fasta file required for sequence lookup (used in trinucleotide context counts). 
+
 ---
 
 ## Metrics
