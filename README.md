@@ -29,7 +29,7 @@ Prepare a [manifest](testfiles/manifest.csv) CSV with the following columns:
 - **sv:** Path to structural variant VCF (one entry per breakend)
 - **cnv:** Path to copy number TSV (must include: `chromosome`, `start` (1-based), `end` (inclusive), `copyNumber`, `minorAlleleCopyNumber`)
 
-*Note:* Each sample must have at least one file type specified (snv, sv, or cnv).
+Note: Each sample must have at least one file type specified (snv, sv, or cnv).
 
 ```{bash}
 scarseek --manifest <path_to_manifest.csv> --genome hg38 --fasta /path/to/hg38.fasta
