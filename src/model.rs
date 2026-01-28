@@ -72,6 +72,12 @@ impl SegmentFile {
     }
 }
 
+impl std::fmt::Display for SegmentFile {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        write!(f, "{}", self.path.display())
+    }
+}
+
 pub struct VcfFile {
     path: PathBuf,
     filetype: VcfFileType,
@@ -174,6 +180,26 @@ pub struct ValidManifestEntry {
     pub sv_vcf: Option<VcfFile>,
     pub cnv_segments: Option<SegmentFile>,
     pub record_index: usize,
+}
+impl fmt::Display for ValidManifestEntry {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        writeln!(f, "-------------------")?;
+        writeln!(f, "Sample ID: {}", self.sample)?;
+        writeln!(f, "-------------------")?;
+        writeln!(f, "SNV path: {}", self.snv_vcf)?;
+
+        match &self.sv_vcf {
+            Some(vcf) => writeln!(f, "SV File: {vcf}")?,
+            None => writeln!(f, "SV file: not supplied")?,
+        }
+
+        match &self.cnv_segments {
+            Some(segment) => writeln!(f, "CNV path: {segment}")?,
+            None => writeln!(f, "CNV path: not supplied")?,
+        }
+
+        Ok(())
+    }
 }
 
 impl ManifestEntry {

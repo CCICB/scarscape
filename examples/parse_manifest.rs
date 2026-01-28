@@ -10,8 +10,8 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
     let reader = ManifestReader::from_path(path)?;
 
     for row in reader {
-        let sample = row?;
-        println!("{sample}");
+        let manifest_entry = row?;
+        println!("{manifest_entry}");
     }
 
     Ok(())
