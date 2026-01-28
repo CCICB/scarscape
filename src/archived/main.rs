@@ -14,7 +14,7 @@ struct Cli {
     /// [sample]: sample identifier
     /// [snv]: path to VCF file describing SNVs and INDELs
     /// [sv]: path to VCF file describing structural variants (1 entry per breakend)
-    /// [cnv]: path to TSV describing segment copy number. Must contain the columns: chromosome, start (1-based), end (inclusive), copyNumber, minorAlleleCopyNumber
+    /// [cnv]: path to CSV describing segment copy number. Must contain the columns: chromosome, start (1-based), end (inclusive), copyNumber, minorAlleleCopyNumber
     #[arg(short, long, value_name = "manifest.tsv", verbatim_doc_comment)]
     manifest: PathBuf,
 

@@ -18,4 +18,5 @@ pub mod cnv;
 pub mod fasta;
 pub mod manifest;
 pub mod references;
+pub mod utils;
 pub mod vcf;

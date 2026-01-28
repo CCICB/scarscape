@@ -1,5 +1,5 @@
 use crate::error::{Error, Result};
-use crate::model::{ManifestEntry, SampleId};
+use crate::model::{ManifestEntry, SampleId, ValidManifestEntry};
 use csv::StringRecord;
 use std::fs::File;
 use std::io::{self, BufRead, BufReader, Read};
@@ -36,18 +36,28 @@ pub struct ColumnIndexes {
     cnv: OptionalCol,    // Column index describing copy number segment file
 }
 
-/// Opinionated manifest reader.
+/// Streaming reader for the sample manifest.
 ///
-/// This is a stateful object that remembers where it is in the file, what columns mean what, and
-/// how to turn a row into one SampleInput. By implementing an Iterator for this reader we can
-/// then iterate over every sample in our manifest
+/// The manifest is parsed row-by-row into [`ManifestEntry`] records. This reader
+/// is designed to:
+/// - support large manifests without loading them into memory
+/// - provide precise, row-indexed error messages
+/// - perform normalization at the I/O boundary (e.g., trimming fields)
 ///
-/// - CSV with headers
-/// - `#` comment lines allowed
-/// - required columns: `sample`, `snv`
-/// - optional columns: `sv`, `cnv`
+/// # Format
+/// The manifest must include a header row and at minimum the following columns:
+/// - `sample`: unique sample identifier
+/// - `snv`: path to SNV VCF
 ///
-/// Output: iterator of `Result<SampleInput, ManifestError>`.
+/// Optional columns may include:
+/// - `sv`: path to SV VCF
+/// - `cnv`: path to CNV calls
+///
+/// Lines beginning with `#` are treated as comments.
+///
+/// # Errors
+/// Parsing errors are returned as [`Error::ManifestParse`] and include the
+/// manifest path (when available) for better diagnostics.
 pub struct ManifestReader<R: BufRead> {
     rdr: csv::Reader<R>,
     columns: ColumnIndexes,
@@ -148,7 +158,7 @@ impl<R: BufRead> ManifestReader<R> {
 /// Implement Iterator for ManifestReader so we can iterate through records
 /// This requires implementation of the functions: `next`
 impl<R: BufRead> Iterator for ManifestReader<R> {
-    type Item = Result<ManifestEntry>;
+    type Item = Result<ValidManifestEntry>;
 
     fn next(&mut self) -> Option<Self::Item> {
         // Here Item is a Result<SampleInput, Error> result
@@ -174,7 +184,8 @@ impl<R: BufRead> Iterator for ManifestReader<R> {
                     &self.columns,
                     self.record_index,
                     self.base_dir.as_deref(),
-                );
+                )
+                .and_then(|m| m.validate());
 
                 Some(result_sample_input)
             }
@@ -199,15 +210,17 @@ fn parse_record(
 
     let snv_vcf = resolve_path(base_dir, snv_raw);
 
-    let sv_vcf = get_optional_field(record, &columns.sv).map(|s| resolve_path(base_dir, s));
+    let sv_vcf = get_optional_field(record, columns.sv.idx).map(|s| resolve_path(base_dir, s));
 
-    let cnv_segments = get_optional_field(record, &columns.cnv).map(|s| resolve_path(base_dir, s));
+    let cnv_segments =
+        get_optional_field(record, columns.cnv.idx).map(|s| resolve_path(base_dir, s));
 
     Ok(ManifestEntry {
         sample: sample_id,
         snv_vcf,
         sv_vcf,
         cnv_segments,
+        record_index,
     })
 }
 
