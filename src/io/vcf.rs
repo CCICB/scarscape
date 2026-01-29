@@ -1,13 +1,24 @@
-use crate::error::{Error, Result};
+//! VCF small-variant adapter (VCF -> DnaSmallMutation)
+//!
+//! Aligned with DEV_PHILOSOPHY / ManifestReader:
+//! - `from_reader` is filesystem-free and unit-testable
+//! - `from_path` is convenience for CLI/pipeline
+//! - streaming Iterator<Item = Result<DnaSmallMutation>>
+//! - expands multi-allelic records into one mutation per ALT allele
+//! - rejects symbolic/breakend ALTs here (SV should have its own adapter)
+
+use std::collections::VecDeque;
+use std::fs::File;
+use std::io::{BufRead, BufReader};
+use std::path::{Path, PathBuf};
+
 use noodles_vcf as vcf;
-use seqlib::base::DnaBase;
+use noodles_vcf::variant::record::AlternateBases;
+
+use crate::error::{Error, Result};
 use seqlib::mutations::DnaSmallMutation;
-use seqlib::sequences::Seq;
-use std::{
-    collections::VecDeque,
-    io::{self, BufRead},
-    path::PathBuf,
-};
+use seqlib::sequences::DnaSeq;
+
 pub struct SmallVariantReader<R> {
     rdr: vcf::io::reader::Reader<R>,
     header: vcf::Header,
@@ -19,83 +30,131 @@ pub struct SmallVariantReader<R> {
     buffer: VecDeque<Result<DnaSmallMutation>>,
 }
 
-impl<R: io::Read> SmallVariantReader<R> {
-    pub fn new(mut rdr: vcf::io::reader::Reader<R>) -> Result<Self> {
-        let header = rdr
-            .read_header()
-            .map_err(|e| Error::VcfParse { source: e })?;
+impl SmallVariantReader<BufReader<File>> {
+    /// Convenience for real files. Keeps filesystem concerns here.
+    pub fn from_path<P: AsRef<Path>>(path: P) -> Result<Self> {
+        let path = path.as_ref().to_path_buf();
+
+        // If you want to enforce existence *here*, do it here (not in from_reader).
+        if !path.exists() {
+            return Err(Error::FileNotFound { path });
+        }
+
+        let f = File::open(&path).map_err(|_| Error::OpenFailed { path: path.clone() })?;
+        let reader = BufReader::new(f);
+        Self::from_reader(reader, Some(path))
+    }
+}
+
+impl<R: BufRead> SmallVariantReader<R> {
+    /// Primary constructor for library + tests (filesystem-free).
+    pub fn from_reader(reader: R, vcf_path: Option<PathBuf>) -> Result<Self> {
+        let mut rdr = vcf::io::reader::Reader::new(reader);
+
+        let header = rdr.read_header().map_err(|_| Error::VcfHeaderRead)?;
+
         Ok(Self {
             rdr,
             header,
-            vcf_path: None,
+            vcf_path,
             record_index: 0,
             done: false,
             buffer: VecDeque::new(),
         })
     }
-}
 
-impl<R: io::Read> Iterator for SmallVariantReader<R> {
-    type Item = Result<DnaSmallMutation>;
-
-    fn next(&mut self) -> Option<Self::Item> {
-        if let Some(item) = self.buffer.pop_front() {
-            return Some(item);
-        }
-
-        if self.done {
-            return None;
-        }
-
+    fn refill_buffer_from_next_record(&mut self) -> Result<()> {
         let mut record = vcf::Record::default();
-        match self.rdr.read_record(&self.header, &mut record) {
+
+        match self.rdr.read_record(&mut record) {
             Ok(0) => {
                 self.done = true;
-                None
+                Ok(())
             }
             Ok(_) => {
                 self.record_index += 1;
 
-                // Expand this record into per-ALT mutations.
-                // Any parsing errors become buffered Err(...) items.
-                expand_record_to_mutations(&record, self.record_index, self.vcf_path.as_deref())
-                    .into_iter()
-                    .for_each(|x| self.buffer.push_back(x));
+                let expanded = expand_record_to_mutations(&record, self.record_index);
 
-                self.buffer.pop_front()
+                self.buffer.extend(expanded);
+
+                Ok(())
             }
-            Err(e) => {
+            Err(_) => Err(Error::VcfRecordRead {
+                record: self.record_index + 1, // next record (1-based) we attempted to read
+            }),
+        }
+    }
+}
+
+impl<R: BufRead> Iterator for SmallVariantReader<R> {
+    type Item = Result<DnaSmallMutation>;
+
+    fn next(&mut self) -> Option<Self::Item> {
+        loop {
+            if let Some(item) = self.buffer.pop_front() {
+                return Some(item);
+            }
+
+            if self.done {
+                return None;
+            }
+
+            if let Err(e) = self.refill_buffer_from_next_record() {
                 self.done = true;
-                Some(Err(Error::VcfParse { source: e }))
+                return Some(Err(e));
             }
         }
     }
 }
 
-use noodles_vcf::variant::record::AlternateBases;
-
+/// Expand one VCF record into 0..N DnaSmallMutation (one per ALT).
+///
+/// Note: we keep this intentionally conservative for the "small variant" adapter:
+/// - ALT="." is skipped
+/// - symbolic ALTs (<DEL>) and breakends ([...], ...]) are rejected
 fn expand_record_to_mutations(
-    record: &noodles_vcf::Record,
+    record: &vcf::Record,
     record_index: usize,
-    vcf_path: Option<&std::path::Path>,
 ) -> Vec<Result<DnaSmallMutation>> {
     let chrom = record.reference_sequence_name().to_string();
-    let pos = record.variant_start().map(|p| p.get() as u64).unwrap_or(0); // you likely want a real error if missing
+
+    // POS: Option<Result<Position, _>>
+    let pos_1based: u64 = match record.variant_start() {
+        Some(Ok(p)) => p.get() as u64,
+        Some(Err(_)) | None => {
+            return vec![Err(Error::VcfInvalidPos {
+                record: record_index,
+            })];
+        }
+    };
 
     let ref_bases = record.reference_bases().to_string();
+    let ref_seq = match DnaSeq::new(&ref_bases) {
+        Ok(s) => s,
+        Err(_) => {
+            return vec![Err(Error::InvalidAlleleSequence {
+                record: record_index,
+                which: "REF",
+                allele: ref_bases,
+            })];
+        }
+    };
 
-    // Collect ALT alleles
-    let alts: Vec<String> = record
-        .alternate_bases()
-        .iter()
-        .map(|a| a.to_string())
-        .collect();
+    // ALT: iterator yields Result<&str, _>
+    let mut alts: Vec<String> = Vec::new();
+    for a in record.alternate_bases().iter() {
+        match a {
+            Ok(s) => alts.push(s.to_string()),
+            Err(_) => {
+                return vec![Err(Error::VcfInvalidAlt {
+                    record: record_index,
+                })];
+            }
+        }
+    }
 
     let multiallelic = alts.len() > 1;
-
-    // If ALT is "." => no variant; skip
-    // (noodles represents this as AlternateBases::Missing / "." depending on version;
-    // easiest is to string-check and skip.)
     let mut out = Vec::new();
 
     for alt in alts {
@@ -103,7 +162,7 @@ fn expand_record_to_mutations(
             continue;
         }
 
-        // Reject symbolic / breakend in the "small mutation" reader
+        // Reject symbolic/breakend alts in the small-variant reader.
         if alt.starts_with('<') || alt.contains('[') || alt.contains(']') {
             out.push(Err(Error::UnsupportedVcfAlt {
                 record: record_index,
@@ -112,27 +171,13 @@ fn expand_record_to_mutations(
             continue;
         }
 
-        let reference = match Seq::<DnaBase>::new(&ref_bases) {
+        let alt_seq = match DnaSeq::new(&alt) {
             Ok(s) => s,
-            Err(e) => {
-                out.push(Err(Error::InvalidAlleleSequence {
-                    record: record_index,
-                    which: "REF",
-                    allele: ref_bases.clone(),
-                    source: e,
-                }));
-                continue;
-            }
-        };
-
-        let alternative = match Seq::<DnaBase>::new(&alt) {
-            Ok(s) => s,
-            Err(e) => {
+            Err(_) => {
                 out.push(Err(Error::InvalidAlleleSequence {
                     record: record_index,
                     which: "ALT",
-                    allele: alt.clone(),
-                    source: e,
+                    allele: alt,
                 }));
                 continue;
             }
@@ -140,9 +185,9 @@ fn expand_record_to_mutations(
 
         out.push(Ok(DnaSmallMutation::new(
             chrom.clone(),
-            pos,
-            reference,
-            alternative,
+            pos_1based,
+            ref_seq.clone(),
+            alt_seq,
             multiallelic,
             None, // context computed later
         )));
@@ -150,44 +195,3 @@ fn expand_record_to_mutations(
 
     out
 }
-// /// Implement Iterator for ManifestReader so we can iterate through records
-// /// This requires implementation of the functions: `next`
-// impl<R: BufRead> Iterator for SmallVariantReader<R> {
-//     type Item = Result<seqlib::mutations::DnaSmallMutation>;
-//
-//     fn next(&mut self) -> Option<Self::Item> {
-//         // Here Item is a Result<SampleInput, Error> result
-//         // as described above
-//         if self.done {
-//             return None;
-//         }
-//
-//         let mut rec = StringRecord::new();
-//         match self.rdr.read_record(&mut rec) {
-//             // if there's no more records to read, return None and stop iterating
-//             Ok(false) => {
-//                 self.done = true;
-//                 None
-//             }
-//             // If there are more records to read
-//             Ok(true) => {
-//                 self.record_index += 1;
-//
-//                 // Parse the string record into SampleInputs object
-//                 let result_sample_input = parse_record(
-//                     &rec,
-//                     &self.columns,
-//                     self.record_index,
-//                     self.base_dir.as_deref(),
-//                 )
-//                 .and_then(|m| m.validate());
-//
-//                 Some(result_sample_input)
-//             }
-//             Err(_) => {
-//                 self.done = true;
-//                 Some(Err(Error::ManifestParse))
-//             }
-//         }
-//     }
-// }

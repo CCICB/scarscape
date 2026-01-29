@@ -225,3 +225,7 @@ impl ManifestEntry {
         })
     }
 }
+
+pub struct SmallVariantCounts {
+    pub total: u64,
+}

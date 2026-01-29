@@ -66,6 +66,11 @@ pub enum Error {
     VcfRecordRead {
         record: usize, // 1-based
     },
+    #[error("VCF record {record} has invalid POS")]
+    VcfInvalidPos { record: usize },
+
+    #[error("VCF record {record} has invalid ALT encoding")]
+    VcfInvalidAlt { record: usize },
 
     // --- Record content errors ---
     #[error("VCF record {record} has unsupported ALT allele: {alt}")]

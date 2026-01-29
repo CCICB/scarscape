@@ -223,3 +223,50 @@ This ensures:
 
 > Contract: If an adapter yields a domain record, it is structurally valid and normalized to the degree required by downstream computations.
 
+
+## Tally contract 
+A **tally** is a streaming computation that consumes **normalized domain events** and produces a
+**typed summary**. Tallies are the primary contract between the adaptor/io layer and the reporting layer.
+
+### What a tally is
+
+A tally is a function/engine with the semantics:
+
+> **tally = fold(Stream<DomainEvent>, Context) -> Summary**
+
+Where:
+- `DomainEvent` is produced by adapters and is already structurally valid.
+- `Context` is lightweight configuration and reference handles (e.g. region set handles, contig maps, FASTA handle).
+- `Summary` is a typed result that reporting can serialize.
+
+### Non-negotiables
+
+Tally functions never accept paths. They accept event streams + context.
+
+A tally MUST:
+- Be **single pass** over the input stream (no buffering entire files).
+- Use **O(1) memory** with respect to number of events (small fixed state is fine).
+- Be **deterministic** given the same event stream + context.
+- Be **filesystem-free**:
+  - no opening paths,
+  - no checking `Path::exists`,
+  - no discovery of indexes,
+  - no parsing of raw file formats.
+- Not own output schema concerns (no column naming, no CSV writing, no file layout decisions).
+
+A tally MAY:
+- Perform **reference lookups** via *provided handles* (e.g. indexed FASTA access passed in through `Context`).
+- Maintain small local state for windowed computations (e.g. “previous SNV” for doublet detection).
+- Track QC counters and “skipped metric” metadata (but should not silently drop ambiguity).
+
+### Canonical public shape
+
+Tallies are exposed as functions that accept an event stream, not paths:
+
+```rust
+pub fn tally_small_variants<I>(
+    events: I,
+    context: &TallyContext,
+) -> Result<SmallVariantSummary, StatsError>
+where
+    I: IntoIterator<Item = Result<DnaSmallMutation>>;
