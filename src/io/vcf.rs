@@ -1,12 +1,31 @@
 //! VCF small-variant adapter (VCF -> DnaSmallMutation)
 //!
-//! Aligned with DEV_PHILOSOPHY / ManifestReader:
-//! - `from_reader` is filesystem-free and unit-testable
-//! - `from_path` is convenience for CLI/pipeline
-//! - streaming Iterator<Item = Result<DnaSmallMutation>>
-//! - expands multi-allelic records into one mutation per ALT allele
-//! - rejects symbolic/breakend ALTs here (SV should have its own adapter)
-
+//! This module provides a **streaming adapter** that reads a VCF and yields
+//! normalized small-variant domain events (`DnaSmallMutation`).
+//!
+//! Design goals:
+//! - filesystem-free construction via [`SmallVariantReader::from_reader`] for unit tests
+//! - convenience construction via [`SmallVariantReader::from_path`] for CLI/pipelines
+//! - streaming iteration (`Iterator<Item = Result<DnaSmallMutation>>`) with minimal buffering
+//! - multi-allelic records are expanded into one mutation per ALT allele
+//! - symbolic / breakend ALT alleles are rejected here (SV belongs in its own adapter)
+//!
+//! # Output contract
+//! Each yielded [`DnaSmallMutation`] is constructed directly from VCF record fields:
+//! - `chromosome` from `CHROM`
+//! - `position` is **1-based** from `POS`
+//! - `reference` from `REF`
+//! - `alternative` from a single `ALT` allele
+//! - `multiallelic` is `true` when the source record had >1 ALT allele
+//! - `pass` is derived from the VCF `FILTER` field using noodles' `Filters::is_pass`
+//! - `context` is always `None` here (computed later, e.g. via reference lookup)
+//!
+//! # Error semantics
+//! This adapter is intentionally conservative: if a record contains unsupported ALT
+//! encodings (symbolic/breakend) or invalid DNA alleles, an error is yielded.
+//!
+//! For multi-allelic records, one ALT allele may yield `Ok(...)` while another yields
+//! `Err(...)`; the iterator preserves streamability by buffering per-record expansions.
 use std::collections::VecDeque;
 use std::fs::File;
 use std::io::{BufRead, BufReader};
@@ -19,6 +38,20 @@ use crate::error::{Error, Result};
 use seqlib::mutations::DnaSmallMutation;
 use seqlib::sequences::DnaSeq;
 
+/// A streaming VCF reader that yields normalized [`DnaSmallMutation`] events.
+///
+/// This is an **adapter**: it performs lightweight parsing + normalization and emits
+/// domain events suitable for downstream classification/tallying.
+///
+/// ## Streaming behavior
+/// - Internally, one VCF record may expand into multiple mutations (one per ALT).
+/// - These per-record results are stored in a small buffer and drained by [`Iterator::next`].
+/// - The iterator yields `Result<DnaSmallMutation>` to allow parse/content errors to be
+///   surfaced without panicking.
+///
+/// ## File provenance
+/// `vcf_path` is optional and is only intended for debugging / improved error messages.
+/// It is not required for correct parsing.
 pub struct SmallVariantReader<R> {
     rdr: vcf::io::reader::Reader<R>,
     header: vcf::Header,
@@ -31,7 +64,16 @@ pub struct SmallVariantReader<R> {
 }
 
 impl SmallVariantReader<BufReader<File>> {
-    /// Convenience for real files. Keeps filesystem concerns here.
+    /// Construct a [`SmallVariantReader`] from a file path.
+    ///
+    /// This is a convenience wrapper that:
+    /// - checks file existence
+    /// - opens the file
+    /// - wraps it in a [`BufReader`]
+    /// - delegates to [`SmallVariantReader::from_reader`]
+    ///
+    /// Prefer this in CLI/pipeline code. Prefer [`SmallVariantReader::from_reader`]
+    /// for unit tests.
     pub fn from_path<P: AsRef<Path>>(path: P) -> Result<Self> {
         let path = path.as_ref().to_path_buf();
 
@@ -47,7 +89,18 @@ impl SmallVariantReader<BufReader<File>> {
 }
 
 impl<R: BufRead> SmallVariantReader<R> {
-    /// Primary constructor for library + tests (filesystem-free).
+    /// Construct a [`SmallVariantReader`] from any [`BufRead`] input.
+    ///
+    /// This is the primary constructor and the preferred entrypoint for unit tests
+    /// because it avoids filesystem concerns.
+    ///
+    /// ## Parameters
+    /// - `reader`: any buffered input implementing [`BufRead`] (e.g. `BufReader<File>`,
+    ///   `Cursor<Vec<u8>>`, stdin wrapper, etc.)
+    /// - `vcf_path`: optional path used for provenance/debugging (may be `None`)
+    ///
+    /// ## Errors
+    /// Returns [`Error::VcfHeaderRead`] if the VCF header cannot be read.
     pub fn from_reader(reader: R, vcf_path: Option<PathBuf>) -> Result<Self> {
         let mut rdr = vcf::io::reader::Reader::new(reader);
 
@@ -90,6 +143,12 @@ impl<R: BufRead> SmallVariantReader<R> {
 impl<R: BufRead> Iterator for SmallVariantReader<R> {
     type Item = Result<DnaSmallMutation>;
 
+    /// Yield the next parsed mutation (or error) from the underlying VCF stream.
+    ///
+    /// This iterator:
+    /// - is forward-only and streaming
+    /// - expands multi-allelic records into separate yielded items
+    /// - stops after the first unrecoverable I/O record read error
     fn next(&mut self) -> Option<Self::Item> {
         loop {
             if let Some(item) = self.buffer.pop_front() {
@@ -108,12 +167,16 @@ impl<R: BufRead> Iterator for SmallVariantReader<R> {
     }
 }
 
-/// Expand one VCF record into 0..N DnaSmallMutation (one per ALT).
+/// Expand one VCF record into 0..N [`DnaSmallMutation`] (one per ALT).
 ///
-/// Note: we keep this intentionally conservative for the "small variant" adapter:
+/// ## `pass` handling
+/// The `pass` field is derived using noodles' [`Filters::is_pass`] which interprets
+/// the VCF `FILTER` field relative to the header.
+///
+/// ## Notes
 /// - ALT="." is skipped
-/// - symbolic ALTs (<DEL>) and breakends ([...], ...]) are rejected
-///
+/// - symbolic ALTs (`<DEL>`) and breakends (`[...` / `...]`) are rejected
+/// - allele strings are validated as DNA via [`DnaSeq::new`]
 fn expand_record_to_mutations(
     header: &vcf::Header,
     record: &vcf::Record,
