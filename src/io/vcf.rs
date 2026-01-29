@@ -160,18 +160,6 @@ fn expand_record_to_mutations(
         }
     };
 
-    let ref_bases = record.reference_bases().to_string();
-    let ref_seq = match DnaSeq::new(&ref_bases) {
-        Ok(s) => s,
-        Err(_) => {
-            return vec![Err(Error::InvalidAlleleSequence {
-                record: record_index,
-                which: "REF",
-                allele: ref_bases,
-            })];
-        }
-    };
-
     // ALT: iterator yields Result<&str, _>
     let mut alts: Vec<String> = Vec::new();
     for a in record.alternate_bases().iter() {
