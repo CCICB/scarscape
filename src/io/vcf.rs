@@ -277,3 +277,195 @@ fn expand_record_to_mutations(
 
     out
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use std::io::Cursor;
+
+    fn vcf_reader(s: &str) -> SmallVariantReader<Cursor<Vec<u8>>> {
+        SmallVariantReader::from_reader(Cursor::new(s.as_bytes().to_vec()), None).unwrap()
+    }
+
+    fn collect_all_ok(
+        rdr: impl Iterator<Item = Result<DnaSmallMutation>>,
+    ) -> Vec<DnaSmallMutation> {
+        let mut out = Vec::new();
+        for item in rdr {
+            out.push(item.unwrap());
+        }
+        out
+    }
+
+    #[test]
+    fn parses_single_snv_pass_true() {
+        // FILTER=PASS => pass=true
+        let vcf = "\
+##fileformat=VCFv4.3
+#CHROM\tPOS\tID\tREF\tALT\tQUAL\tFILTER\tINFO
+chr1\t10\t.\tA\tG\t.\tPASS\t.
+";
+
+        let muts = collect_all_ok(vcf_reader(vcf));
+        assert_eq!(muts.len(), 1);
+
+        let m = &muts[0];
+        assert_eq!(m.chromosome(), "chr1");
+        assert_eq!(m.position(), 10);
+        assert_eq!(m.reference().to_string(), "A");
+        assert_eq!(m.alternative().to_string(), "G");
+        assert!(!m.is_multiallelic());
+        assert!(m.is_pass());
+        assert!(m.context().is_none());
+    }
+
+    #[test]
+    fn parses_single_snv_pass_false_when_filtered() {
+        // Non-PASS filters require header definitions for noodles' is_pass(header)
+        let vcf = "\
+##fileformat=VCFv4.3
+##FILTER=<ID=q10,Description=\"Quality below 10\">
+#CHROM\tPOS\tID\tREF\tALT\tQUAL\tFILTER\tINFO
+chr1\t10\t.\tA\tG\t.\tq10\t.
+";
+
+        let muts = collect_all_ok(vcf_reader(vcf));
+        assert_eq!(muts.len(), 1);
+        assert!(!muts[0].is_pass());
+    }
+
+    #[test]
+    fn expands_multiallelic_record_into_multiple_mutations() {
+        let vcf = "\
+##fileformat=VCFv4.3
+#CHROM\tPOS\tID\tREF\tALT\tQUAL\tFILTER\tINFO
+chr2\t20\t.\tC\tA,G\t.\tPASS\t.
+";
+
+        let muts = collect_all_ok(vcf_reader(vcf));
+        assert_eq!(muts.len(), 2);
+
+        // Both should be marked multiallelic
+        assert!(muts.iter().all(|m| m.is_multiallelic()));
+        assert!(muts.iter().all(|m| m.chromosome() == "chr2"));
+        assert!(muts.iter().all(|m| m.position() == 20));
+        assert!(muts.iter().all(|m| m.reference().to_string() == "C"));
+
+        let alts: Vec<String> = muts.iter().map(|m| m.alternative().to_string()).collect();
+        assert!(alts.contains(&"A".to_string()));
+        assert!(alts.contains(&"G".to_string()));
+    }
+
+    #[test]
+    fn skips_dot_alt() {
+        // ALT="." produces no mutation
+        let vcf = "\
+##fileformat=VCFv4.3
+#CHROM\tPOS\tID\tREF\tALT\tQUAL\tFILTER\tINFO
+chr1\t10\t.\tA\t.\t.\tPASS\t.
+";
+
+        let muts = collect_all_ok(vcf_reader(vcf));
+        assert_eq!(muts.len(), 0);
+    }
+
+    #[test]
+    fn rejects_symbolic_alt() {
+        let vcf = "\
+##fileformat=VCFv4.3
+#CHROM\tPOS\tID\tREF\tALT\tQUAL\tFILTER\tINFO
+chr1\t10\t.\tA\t<DEL>\t.\tPASS\t.
+";
+
+        let mut rdr = vcf_reader(vcf);
+        let first = rdr.next().unwrap();
+
+        match first {
+            Err(Error::UnsupportedVcfAlt { record, alt }) => {
+                assert_eq!(record, 1);
+                assert_eq!(alt, "<DEL>");
+            }
+            other => panic!("expected UnsupportedVcfAlt, got: {other:?}"),
+        }
+    }
+
+    #[test]
+    fn rejects_breakend_alt() {
+        // Any ALT containing '[' or ']' is rejected by this small-variant adapter.
+        let vcf = "\
+##fileformat=VCFv4.3
+#CHROM\tPOS\tID\tREF\tALT\tQUAL\tFILTER\tINFO
+chr1\t10\t.\tA\tA[chr2:123[\t.\tPASS\t.
+";
+
+        let mut rdr = vcf_reader(vcf);
+        let first = rdr.next().unwrap();
+
+        match first {
+            Err(Error::UnsupportedVcfAlt { record, alt }) => {
+                assert_eq!(record, 1);
+                assert!(alt.contains('['));
+            }
+            other => panic!("expected UnsupportedVcfAlt, got: {other:?}"),
+        }
+    }
+
+    #[test]
+    fn rejects_invalid_alt_sequence() {
+        // 'B' is not a DNA base in your DnaSeq validation
+        let vcf = "\
+##fileformat=VCFv4.3
+#CHROM\tPOS\tID\tREF\tALT\tQUAL\tFILTER\tINFO
+chr1\t10\t.\tA\tZ\t.\tPASS\t.
+";
+
+        let mut rdr = vcf_reader(vcf);
+        let first = rdr.next().unwrap();
+
+        match first {
+            Err(Error::InvalidAlleleSequence {
+                record,
+                which,
+                allele,
+            }) => {
+                assert_eq!(record, 1);
+                assert_eq!(which, "ALT");
+                assert_eq!(allele, "Z");
+            }
+            other => panic!("expected InvalidAlleleSequence(ALT), got: {other:?}"),
+        }
+    }
+
+    #[test]
+    fn rejects_invalid_pos() {
+        // POS must be an integer; using 'X' should trigger VcfInvalidPos via noodles parsing.
+        let vcf = "\
+##fileformat=VCFv4.3
+#CHROM\tPOS\tID\tREF\tALT\tQUAL\tFILTER\tINFO
+chr1\tX\t.\tA\tG\t.\tPASS\t.
+";
+
+        let mut rdr = vcf_reader(vcf);
+        let first = rdr.next().unwrap();
+
+        match first {
+            Err(Error::VcfInvalidPos { record }) => assert_eq!(record, 1),
+            other => panic!("expected VcfInvalidPos, got: {other:?}"),
+        }
+    }
+
+    #[test]
+    fn unknown_filter_id_is_not_pass() {
+        // Header does NOT define q10, but many noodles versions still treat
+        // any non-PASS filter as "not pass" rather than erroring.
+        let vcf = "\
+##fileformat=VCFv4.3
+#CHROM\tPOS\tID\tREF\tALT\tQUAL\tFILTER\tINFO
+chr1\t10\t.\tA\tG\t.\tq10\t.
+";
+
+        let muts = collect_all_ok(vcf_reader(vcf));
+        assert_eq!(muts.len(), 1);
+        assert!(!muts[0].is_pass());
+    }
+}
