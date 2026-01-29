@@ -82,6 +82,9 @@ pub enum Error {
         which: &'static str, // "REF" or "ALT"
         allele: String,
     },
+
+    #[error("VCF record {record} has invalid filter")]
+    VcfInvalidFilter { record: usize },
 }
 
 // A custom Result type that forces use of scarscape's internal Error type

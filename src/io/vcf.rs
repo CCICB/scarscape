@@ -13,7 +13,7 @@ use std::io::{BufRead, BufReader};
 use std::path::{Path, PathBuf};
 
 use noodles_vcf as vcf;
-use noodles_vcf::variant::record::AlternateBases;
+use noodles_vcf::variant::record::{AlternateBases, Filters};
 
 use crate::error::{Error, Result};
 use seqlib::mutations::DnaSmallMutation;
@@ -74,7 +74,7 @@ impl<R: BufRead> SmallVariantReader<R> {
             Ok(_) => {
                 self.record_index += 1;
 
-                let expanded = expand_record_to_mutations(&record, self.record_index);
+                let expanded = expand_record_to_mutations(&self.header, &record, self.record_index);
 
                 self.buffer.extend(expanded);
 
@@ -113,7 +113,9 @@ impl<R: BufRead> Iterator for SmallVariantReader<R> {
 /// Note: we keep this intentionally conservative for the "small variant" adapter:
 /// - ALT="." is skipped
 /// - symbolic ALTs (<DEL>) and breakends ([...], ...]) are rejected
+///
 fn expand_record_to_mutations(
+    header: &vcf::Header,
     record: &vcf::Record,
     record_index: usize,
 ) -> Vec<Result<DnaSmallMutation>> {
@@ -125,6 +127,35 @@ fn expand_record_to_mutations(
         Some(Err(_)) | None => {
             return vec![Err(Error::VcfInvalidPos {
                 record: record_index,
+            })];
+        }
+    };
+
+    // Compute pass once per record from FILTER
+    //
+    // Convention:
+    // - FILTER="PASS" => pass=true
+    // - FILTER="."    => pass=true (no filters applied / not filtered)
+    // - otherwise     => pass=false
+    //
+    // If FILTER parsing itself errors, we surface a content error.
+    let pass: bool = match record.filters().is_pass(header) {
+        Ok(b) => b,
+        Err(_) => {
+            return vec![Err(Error::VcfInvalidFilter {
+                record: record_index,
+            })];
+        }
+    };
+
+    let ref_bases = record.reference_bases().to_string();
+    let ref_seq = match DnaSeq::new(&ref_bases) {
+        Ok(s) => s,
+        Err(_) => {
+            return vec![Err(Error::InvalidAlleleSequence {
+                record: record_index,
+                which: "REF",
+                allele: ref_bases,
             })];
         }
     };
@@ -182,14 +213,14 @@ fn expand_record_to_mutations(
                 continue;
             }
         };
-
         out.push(Ok(DnaSmallMutation::new(
             chrom.clone(),
             pos_1based,
             ref_seq.clone(),
             alt_seq,
             multiallelic,
-            None, // context computed later
+            pass,
+            None,
         )));
     }
 

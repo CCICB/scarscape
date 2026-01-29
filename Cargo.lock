@@ -968,7 +968,7 @@ dependencies = [
 [[package]]
 name = "seqlib"
 version = "0.1.0"
-source = "git+https://github.com/selkamand/seqlib#efeaf0d651fcc9ed3a01195cfc58ef5bd54b171c"
+source = "git+https://github.com/selkamand/seqlib#1b5b313bc1929851e89328b266378bd2ddc7a845"
 dependencies = [
  "thiserror 2.0.18",
 ]
